@@ -6,12 +6,7 @@ cd /d "%~dp0"
 echo === Установка Джарвис Атмосфера ===
 
 where python >nul 2>nul
-if errorlevel 1 (
-  echo Python не найден. Установите его с https://www.python.org/downloads/
-  echo и при установке отметьте галочку "Add Python to PATH", затем запустите install.bat снова.
-  pause
-  exit /b 1
-)
+if errorlevel 1 goto nopython
 
 echo [1/3] Создание виртуального окружения...
 python -m venv .venv
@@ -29,3 +24,10 @@ powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateS
 echo.
 echo Готово! Ярлык "Jarvis Atmosphere" на рабочем столе запускает программу.
 pause
+exit /b 0
+
+:nopython
+echo Python не найден. Установите его с https://www.python.org/downloads/
+echo и отметьте галочку "Add Python to PATH", затем запустите install.bat снова.
+pause
+exit /b 1
