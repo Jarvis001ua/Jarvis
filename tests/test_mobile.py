@@ -142,3 +142,11 @@ def test_task_export(http_server, task_store, tmp_path, monkeypatch):
     data = post_json(http_server, "/api/task/export", {"id": task_id})
     assert any("Результат сохранён" in line for line in data["log"])
     assert list((tmp_path / "results").iterdir())
+
+
+def test_task_new_with_template(http_server, task_store):
+    data = post_json(
+        http_server, "/api/task/new", {"title": "Программа", "template": "code"}
+    )
+    assert data["tasks"][0]["work"].startswith("# Что делает программа")
+    assert data["templates"]

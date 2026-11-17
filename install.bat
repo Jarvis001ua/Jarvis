@@ -22,6 +22,9 @@ if errorlevel 1 goto pipfail
 
 echo [3/3] Creating desktop shortcut...
 powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop');$s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'Jarvis Atmosphere.lnk'));$s.TargetPath='%~dp0jarvis_gui.bat';$s.WorkingDirectory='%~dp0';$s.Description='Jarvis Atmosphere';$s.Save()"
+powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Startup');$s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'Jarvis Atmosphere.lnk'));$s.TargetPath='%~dp0jarvis_gui.bat';$s.WorkingDirectory='%~dp0';$s.Description='Jarvis Atmosphere autostart';$s.Save()"
+if errorlevel 1 goto shortcutfail
+echo Autostart with Windows enabled.
 if errorlevel 1 goto shortcutfail
 
 echo.

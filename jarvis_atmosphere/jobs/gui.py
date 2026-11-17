@@ -12,7 +12,7 @@ from .keystore import KeystoreError, bind_accounts, save_password
 from .monitor import Monitor
 from .schedule import is_valid_time, seconds_until
 from .settings import Account, Settings
-from .tasks import STATUS_LABELS, TaskStore
+from .tasks import STATUS_LABELS, TEMPLATE_LABELS, TaskStore, template_text
 
 
 class JobsApp:
@@ -24,6 +24,7 @@ class JobsApp:
         self.root.title("Джарвис Атмосфера — Заказы")
         self.root.geometry("860x640")
         self.auto_running = False
+        self.last_draft = ""
         self._build()
 
     def _build(self) -> None:
@@ -110,17 +111,29 @@ class JobsApp:
         ttk.Label(dialog, text="Название задачи:").grid(row=0, column=0, padx=6, pady=4)
         title_entry = ttk.Entry(dialog, width=50)
         title_entry.grid(row=0, column=1, padx=6, pady=4)
+        ttk.Label(dialog, text="Шаблон работы:").grid(row=1, column=0, padx=6, pady=4)
+        kind_box = ttk.Combobox(
+            dialog, width=47, state="readonly", values=list(TEMPLATE_LABELS.values())
+        )
+        kind_box.current(3)
+        kind_box.grid(row=1, column=1, padx=6, pady=4)
 
         def confirm() -> None:
             title = title_entry.get().strip()
             if not title:
                 messagebox.showinfo("Джарвис", "Введите название задачи.")
                 return
-            self.tasks.add(title)
+            kind = next(
+                k for k, label in TEMPLATE_LABELS.items() if label == kind_box.get()
+            )
+            task = self.tasks.add(title)
+            self.tasks.save_work(task.task_id, template_text(kind))
             dialog.destroy()
             self._refresh_tasks()
+            self.tasks_tree.selection_set(task.task_id)
+            self._load_task_work()
 
-        ttk.Button(dialog, text="OK", command=confirm).grid(row=1, column=1, sticky="e")
+        ttk.Button(dialog, text="OK", command=confirm).grid(row=2, column=1, sticky="e")
 
     def _set_task_status(self, status: str) -> None:
         task_id = self._selected_task_id()
@@ -270,8 +283,34 @@ class JobsApp:
             bar, text="Запустить авто-режим", command=self._toggle_auto
         )
         self.auto_button.pack(side="left", padx=6)
+        ttk.Button(bar, text="Скопировать отклик", command=self._copy_last_draft).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="Открыть папку откликов", command=self._open_drafts).pack(
+            side="left", padx=6
+        )
         self.log = scrolledtext.ScrolledText(frame, height=24, width=110)
         self.log.pack(fill="both", expand=True, padx=8, pady=6)
+
+    def _copy_last_draft(self) -> None:
+        if not self.last_draft:
+            messagebox.showinfo("Джарвис", "Сначала проверьте заказы — отклик появится здесь.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.last_draft)
+        self._log("Отклик скопирован в буфер — вставьте его на сайте биржи.")
+
+    def _open_drafts(self) -> None:
+        from .drafts import DRAFTS_DIR
+
+        DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+        import subprocess
+        import sys
+
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(DRAFTS_DIR)])
+        else:
+            subprocess.Popen(["xdg-open", str(DRAFTS_DIR)])
 
     def _add_account(self) -> None:
         dialog = tk.Toplevel(self.root)
@@ -371,10 +410,14 @@ class JobsApp:
     def _announce(self, order) -> None:
         draft = generate_draft(order, self.settings)
         path = save_draft(order, draft)
+        self.last_draft = draft
         budget = f", бюджет {order.budget:g} руб." if order.budget else ""
         self._log(f"[{order.source}] {order.title}{budget}")
         self._log(f"  {order.url}")
         self._log(f"  Черновик: {path}")
+        self._log("  ЧТО ДЕЛАТЬ: 1) нажмите «Скопировать отклик» 2) вставьте текст")
+        self._log("  на сайте биржи 3) если заказчик согласился — создайте задачу")
+        self._log("  на вкладке «Задачи» и выполняйте по шаблону.")
 
     def _toggle_auto(self) -> None:
         if self.auto_running:
@@ -422,8 +465,14 @@ class JobsApp:
                 time.sleep(1)
 
     def run(self) -> int:
+        self.root.after(500, self._startup_auto)
         self.root.mainloop()
         return 0
+
+    def _startup_auto(self) -> None:
+        if self.settings.keywords or self.settings.auto_start_time:
+            self._log("Авто-режим включён автоматически — ничего нажимать не нужно.")
+            self._toggle_auto()
 
 
 def run_gui() -> int:

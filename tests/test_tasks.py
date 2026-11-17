@@ -88,3 +88,23 @@ def test_status_labels_cover_order():
             "jarvis_atmosphere.jobs.tasks", fromlist=["STATUS_LABELS"]
         ).STATUS_LABELS
     )
+
+
+def test_templates_all_kinds():
+    from jarvis_atmosphere.jobs.tasks import TEMPLATES, template_text
+
+    for kind in TEMPLATES:
+        text = template_text(kind)
+        assert text.strip()
+    assert template_text("unknown") == TEMPLATES["other"]
+
+
+def test_task_with_template_workflow(store):
+    from jarvis_atmosphere.jobs.tasks import template_text
+
+    task = store.add("Отчёт для клиента")
+    store.save_work(task.task_id, template_text("report"))
+    loaded = store.get(task.task_id)
+    assert "## Что сделано" in loaded.work
+    path = store.export_result(loaded.task_id)
+    assert "Отчёт для клиента" in path.read_text(encoding="utf-8")

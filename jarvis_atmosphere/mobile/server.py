@@ -15,7 +15,7 @@ from ..__main__ import handle_phrase
 from ..jobs.drafts import generate_draft, save_draft
 from ..jobs.monitor import Monitor
 from ..jobs.settings import Account, Settings
-from ..jobs.tasks import STATUS_LABELS, TaskStore
+from ..jobs.tasks import STATUS_LABELS, TEMPLATE_LABELS, TaskStore, template_text
 
 HOST = "127.0.0.1"
 PORT = 8080
@@ -107,6 +107,7 @@ def state_json() -> dict:
         "auto_start_time": s.auto_start_time,
         "accounts": "\n".join(f"{a.platform},{a.login}" for a in s.accounts),
         "auto_running": STATE.auto_running,
+        "templates": list(TEMPLATE_LABELS.values()),
         "atmosphere": STATE.atmosphere.status,
         "log": STATE.log,
         "tasks": [
@@ -181,6 +182,9 @@ PAGE = """<!DOCTYPE html>
 <h2>Задачи (выполнение)</h2>
 <label>Название новой задачи</label>
 <input id="task_title" placeholder="Например: Статья про гаджеты">
+<label>Шаблон работы</label>
+<select id="task_kind" style="width:100%;padding:10px;background:#1b2127;color:#e8eaed;
+  border:1px solid #2c333a;border-radius:8px;font-size:15px"></select>
 <button onclick="taskNew()">Добавить задачу</button>
 <label>Список задач</label>
 <div id="tasklist"></div>
@@ -218,6 +222,10 @@ function render(s) {
   b.textContent = s.auto_running ? 'Остановить авто-режим' : 'Запустить авто-режим';
   b.className = s.auto_running ? 'stop' : 'secondary';
   renderTasks(s.tasks || []);
+  const sel = document.getElementById('task_kind');
+  if (!sel.options.length && (s.templates || []).length)
+    for (const t of s.templates) { const o = document.createElement('option');
+      o.textContent = t; sel.appendChild(o); }
 }
 let selectedTask = null;
 function renderTasks(tasks) {
@@ -239,8 +247,14 @@ function renderTasks(tasks) {
     box.appendChild(row);
   }
 }
-async function taskNew(){const d=await post('/api/task/new',{title:v('task_title')});
-  document.getElementById('task_title').value=''; render(d)}
+const KIND_KEYS = ['text','code','report','other'];
+async function taskNew(){
+  const sel = document.getElementById('task_kind');
+  const kind = KIND_KEYS[sel.selectedIndex] || 'other';
+  const d = await post('/api/task/new',{title:v('task_title'),template:kind});
+  document.getElementById('task_title').value=''; render(d);
+  if (d.tasks && d.tasks.length) { selectedTask = d.tasks[0].id;
+    document.getElementById('task_work').value = d.tasks[0].work || ''; }}
 async function taskSave(){if(!selectedTask){alert('Сначала откройте задачу (кнопка \'открыть\')');return}
   render(await post('/api/task/save',{id:selectedTask,work:v('task_work')}))}
 async function taskStatus(st){if(!selectedTask){alert('Сначала откройте задачу');return}
@@ -316,9 +330,12 @@ class Handler(BaseHTTPRequestHandler):
             STATE.append_log(f"Джарвис: {reply}")
             self._send_json(state_json())
         elif self.path == "/api/task/new":
-            title = str(self._body().get("title", "")).strip()
+            body = self._body()
+            title = str(body.get("title", "")).strip()
             if title:
-                STATE.tasks.add(title)
+                task = STATE.tasks.add(title)
+                kind = str(body.get("template", "other"))
+                STATE.tasks.save_work(task.task_id, template_text(kind))
                 STATE.append_log(f"Новая задача: {title}")
             self._send_json(state_json())
         elif self.path == "/api/task/status":
@@ -356,6 +373,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    if STATE.settings.keywords or STATE.settings.auto_start_time:
+        STATE.auto_running = True
+        threading.Thread(target=STATE.auto_loop, daemon=True).start()
+        print("Авто-режим включён автоматически.")
     print(f"Джарвис Атмосфера запущена.")
     print(f"Откройте в браузере телефона: http://{HOST}:{PORT}")
     print("Для остановки: Ctrl+C")
