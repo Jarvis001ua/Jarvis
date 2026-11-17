@@ -3,5 +3,8 @@ SpeechRecognition>=3.10
 pyttsx3>=2.90
 PyAudio>=0.2.13; sys_platform != "linux" or platform_machine != "aarch64"
 
+# Модуль «Заказы»: хранение паролей в системном хранилище ОС
+keyring>=24
+
 # Разработка
 pytest>=8.0
