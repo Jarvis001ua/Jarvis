@@ -4,6 +4,9 @@ cd /d "%~dp0"
 
 echo === Jarvis Atmosphere Setup ===
 
+if not exist "requirements.txt" goto nofiles
+if not exist "jarvis_atmosphere" goto nofiles
+
 where python >nul 2>nul
 if errorlevel 1 goto nopython
 
@@ -26,6 +29,22 @@ echo === Done! Shortcut "Jarvis Atmosphere" created on your Desktop ===
 echo.
 pause
 exit /b 0
+
+:nofiles
+echo ERROR: requirements.txt not found next to install.bat.
+echo.
+echo This happens when install.bat is run from INSIDE the ZIP archive,
+echo or when the .bat file was copied out of the folder separately.
+echo.
+echo How to fix:
+echo   1. Download the ZIP file.
+echo   2. Right-click it - "Extract All..." - extract to a folder.
+echo   3. Open THAT folder (it contains requirements.txt, install.bat,
+echo      jarvis_atmosphere, tests).
+echo   4. Run install.bat from there.
+echo.
+pause
+exit /b 1
 
 :nopython
 echo ERROR: Python not found.
