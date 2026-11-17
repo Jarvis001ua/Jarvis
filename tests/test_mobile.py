@@ -6,6 +6,7 @@ import urllib.request
 
 import pytest
 
+from jarvis_atmosphere.jobs.tasks import TaskStore
 from jarvis_atmosphere.mobile import server
 
 
@@ -95,3 +96,49 @@ def test_404(http_server):
 
     with pytest.raises(urllib.error.HTTPError):
         get(http_server, "/no-such-page")
+
+
+@pytest.fixture()
+def task_store(tmp_path, monkeypatch):
+    store = TaskStore(path=tmp_path / "tasks.json")
+    monkeypatch.setattr(server.STATE, "tasks", store)
+    return store
+
+
+def test_task_lifecycle(http_server, task_store):
+    data = post_json(http_server, "/api/task/new", {"title": "Статья про гаджеты"})
+    assert len(data["tasks"]) == 1
+    task = data["tasks"][0]
+    assert task["title"] == "Статья про гаджеты"
+    assert task["status_label"] == "новая"
+
+    data = post_json(
+        http_server, "/api/task/save", {"id": task["id"], "work": "Текст работы"}
+    )
+    assert data["tasks"][0]["work"] == "Текст работы"
+
+    data = post_json(
+        http_server, "/api/task/status", {"id": task["id"], "status": "done"}
+    )
+    assert data["tasks"][0]["status_label"] == "выполнено"
+
+
+def test_task_bad_status_ignored(http_server, task_store):
+    data = post_json(http_server, "/api/task/new", {"title": "Задача"})
+    task_id = data["tasks"][0]["id"]
+    data = post_json(
+        http_server, "/api/task/status", {"id": task_id, "status": "sent"}
+    )
+    assert data["tasks"][0]["status"] == "new"
+
+
+def test_task_export(http_server, task_store, tmp_path, monkeypatch):
+    from jarvis_atmosphere.jobs import tasks as tasks_module
+
+    monkeypatch.setattr(tasks_module, "RESULTS_DIR", tmp_path / "results")
+    data = post_json(http_server, "/api/task/new", {"title": "Отчёт"})
+    task_id = data["tasks"][0]["id"]
+    post_json(http_server, "/api/task/save", {"id": task_id, "work": "Готово."})
+    data = post_json(http_server, "/api/task/export", {"id": task_id})
+    assert any("Результат сохранён" in line for line in data["log"])
+    assert list((tmp_path / "results").iterdir())

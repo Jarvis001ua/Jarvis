@@ -12,12 +12,14 @@ from .keystore import KeystoreError, bind_accounts, save_password
 from .monitor import Monitor
 from .schedule import is_valid_time, seconds_until
 from .settings import Account, Settings
+from .tasks import STATUS_LABELS, TaskStore
 
 
 class JobsApp:
     def __init__(self) -> None:
         self.settings = Settings.load()
         self.monitor = Monitor(self.settings)
+        self.tasks = TaskStore()
         self.root = tk.Tk()
         self.root.title("Джарвис Атмосфера — Заказы")
         self.root.geometry("860x640")
@@ -35,6 +37,142 @@ class JobsApp:
         monitor_frame = ttk.Frame(notebook)
         notebook.add(monitor_frame, text="Монитор заказов")
         self._build_monitor(monitor_frame)
+
+        tasks_frame = ttk.Frame(notebook)
+        notebook.add(tasks_frame, text="Задачи (выполнение)")
+        self._build_tasks(tasks_frame)
+
+    def _build_tasks(self, frame: ttk.Frame) -> None:
+        bar = ttk.Frame(frame)
+        bar.pack(fill="x", padx=8, pady=6)
+        ttk.Button(bar, text="Обновить", command=self._refresh_tasks).pack(side="left")
+        ttk.Button(bar, text="Новая задача", command=self._new_task).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="Взять в работу", command=lambda: self._set_task_status("in_progress")).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="На проверку", command=lambda: self._set_task_status("review")).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="Выполнено", command=lambda: self._set_task_status("done")).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="Сохранить работу", command=self._save_task_work).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="Экспорт результата", command=self._export_task).pack(
+            side="left", padx=6
+        )
+        ttk.Button(bar, text="Удалить", command=self._delete_task).pack(
+            side="left", padx=6
+        )
+
+        self.tasks_tree = ttk.Treeview(
+            frame, columns=("title", "source", "status", "budget"), show="headings", height=8
+        )
+        self.tasks_tree.heading("title", text="Задача")
+        self.tasks_tree.heading("source", text="Источник")
+        self.tasks_tree.heading("status", text="Статус")
+        self.tasks_tree.heading("budget", text="Бюджет, руб.")
+        self.tasks_tree.column("title", width=340)
+        self.tasks_tree.column("source", width=90)
+        self.tasks_tree.column("status", width=110)
+        self.tasks_tree.column("budget", width=90, anchor="e")
+        self.tasks_tree.pack(fill="x", padx=8, pady=6)
+        self.tasks_tree.bind("<<TreeviewSelect>>", lambda _e: self._load_task_work())
+
+        ttk.Label(frame, text="Текст работы (пишите здесь, затем \"Сохранить работу\"):").pack(
+            anchor="w", padx=8
+        )
+        self.work_text = scrolledtext.ScrolledText(frame, height=14, width=110)
+        self.work_text.pack(fill="both", expand=True, padx=8, pady=6)
+        self._refresh_tasks()
+
+    def _refresh_tasks(self) -> None:
+        self.tasks_tree.delete(*self.tasks_tree.get_children())
+        for task in self.tasks.list_tasks():
+            budget = f"{task.budget:g}" if task.budget else ""
+            self.tasks_tree.insert(
+                "",
+                "end",
+                iid=task.task_id,
+                values=(task.title, task.source, STATUS_LABELS[task.status], budget),
+            )
+
+    def _selected_task_id(self) -> str | None:
+        selection = self.tasks_tree.selection()
+        return selection[0] if selection else None
+
+    def _new_task(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Новая задача")
+        ttk.Label(dialog, text="Название задачи:").grid(row=0, column=0, padx=6, pady=4)
+        title_entry = ttk.Entry(dialog, width=50)
+        title_entry.grid(row=0, column=1, padx=6, pady=4)
+
+        def confirm() -> None:
+            title = title_entry.get().strip()
+            if not title:
+                messagebox.showinfo("Джарвис", "Введите название задачи.")
+                return
+            self.tasks.add(title)
+            dialog.destroy()
+            self._refresh_tasks()
+
+        ttk.Button(dialog, text="OK", command=confirm).grid(row=1, column=1, sticky="e")
+
+    def _set_task_status(self, status: str) -> None:
+        task_id = self._selected_task_id()
+        if not task_id:
+            messagebox.showinfo("Джарвис", "Выберите задачу в списке.")
+            return
+        self.tasks.set_status(task_id, status)
+        self._refresh_tasks()
+
+    def _load_task_work(self) -> None:
+        task_id = self._selected_task_id()
+        if not task_id:
+            return
+        task = self.tasks.get(task_id)
+        if task:
+            self.work_text.delete("1.0", "end")
+            self.work_text.insert("1.0", task.work)
+
+    def _save_task_work(self) -> None:
+        task_id = self._selected_task_id()
+        if not task_id:
+            messagebox.showinfo("Джарвис", "Выберите задачу в списке.")
+            return
+        self.tasks.save_work(task_id, self.work_text.get("1.0", "end").rstrip())
+        self._refresh_tasks()
+
+    def _export_task(self) -> None:
+        task_id = self._selected_task_id()
+        if not task_id:
+            messagebox.showinfo("Джарвис", "Выберите задачу в списке.")
+            return
+        try:
+            path = self.tasks.export_result(task_id)
+        except ValueError:
+            messagebox.showwarning(
+                "Джарвис", "Сначала напишите работу и нажмите \"Сохранить работу\"."
+            )
+            return
+        messagebox.showinfo(
+            "Джарвис",
+            f"Готовый файл результата:\n{path}\n\n"
+            "Отправьте его заказчику вручную через биржу.",
+        )
+
+    def _delete_task(self) -> None:
+        task_id = self._selected_task_id()
+        if not task_id:
+            messagebox.showinfo("Джарвис", "Выберите задачу в списке.")
+            return
+        self.tasks.remove(task_id)
+        self.work_text.delete("1.0", "end")
+        self._refresh_tasks()
 
     def _build_settings(self, frame: ttk.Frame) -> None:
         pad = {"padx": 8, "pady": 4}

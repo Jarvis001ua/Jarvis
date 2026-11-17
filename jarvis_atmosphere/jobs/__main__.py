@@ -13,6 +13,7 @@ from .monitor import Monitor
 from .schedule import seconds_until
 from .settings import Account, Settings
 from .sources import Order
+from .tasks import STATUS_LABELS, TaskStore
 
 
 def on_new_order(order: Order, settings: Settings) -> None:
@@ -142,6 +143,21 @@ def run_settings() -> int:
     return 0
 
 
+def run_tasks() -> int:
+    store = TaskStore()
+    tasks = store.list_tasks()
+    if not tasks:
+        print("Задач пока нет. Добавьте их в окне программы (вкладка \"Задачи\") или на телефоне.")
+        return 0
+    for task in tasks:
+        budget = f", бюджет {task.budget:g} руб." if task.budget else ""
+        source = f" [{task.source}]" if task.source else ""
+        print(f"{task.title}{source}{budget}")
+        print(f"  Статус: {STATUS_LABELS[task.status]}")
+        print(f"  Работа записана: {'да' if task.work.strip() else 'нет'}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="jarvis_atmosphere.jobs")
     modes = parser.add_mutually_exclusive_group()
@@ -149,12 +165,16 @@ def main() -> int:
     modes.add_argument("--auto", action="store_true", help="автоматический режим")
     modes.add_argument("--settings", action="store_true", help="настройки в терминале")
     modes.add_argument("--gui", action="store_true", help="окно настроек и монитора")
+    modes.add_argument("--tasks", action="store_true", help="список задач на выполнение")
     args = parser.parse_args()
 
     if args.gui:
         from .gui import run_gui
 
         return run_gui()
+
+    if args.tasks:
+        return run_tasks()
 
     settings = Settings.load()
     if args.settings:
