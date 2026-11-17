@@ -1,7 +1,8 @@
 # Голосовой ввод/вывод (опционально — без них работает текстовый режим)
+# PyAudio ставится отдельно: для самых новых версий Python (3.13+) может
+# не быть готовой сборки — тогда нужен Python 3.12 или Visual C++ Build Tools.
 SpeechRecognition>=3.10
 pyttsx3>=2.90
-PyAudio>=0.2.13; sys_platform != "linux" or platform_machine != "aarch64"
 
 # Модуль «Заказы»: хранение паролей в системном хранилище ОС
 keyring>=24

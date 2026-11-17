@@ -23,8 +23,10 @@ def listen(timeout: int = 5, phrase_limit: int = 5) -> str:
             audio = recognizer.listen(
                 source, timeout=timeout, phrase_time_limit=phrase_limit
             )
-    except OSError as exc:
-        raise SpeechInputError(f"Микрофон недоступен: {exc}") from exc
+    except Exception as exc:
+        raise SpeechInputError(
+            f"Микрофон недоступен (проверьте, что установлен PyAudio): {exc}"
+        ) from exc
 
     try:
         return recognizer.recognize_google(audio, language="ru-RU")
